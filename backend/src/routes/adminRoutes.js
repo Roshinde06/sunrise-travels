@@ -3,6 +3,7 @@ const { body } = require('express-validator');
 const {
   dashboard,
   bookings,
+  rejectRequest,
   travelSpend,
   analytics,
   auditLogs,
@@ -23,6 +24,7 @@ router.use(authenticate, authorize('admin'));
 
 router.get('/dashboard', dashboard);
 router.get('/bookings', bookings);
+router.post('/requests/:id/reject', rejectRequest);
 router.get('/travel-spend', travelSpend);
 router.get('/analytics', analytics);
 router.get('/audit-logs', auditLogs);

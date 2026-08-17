@@ -17,7 +17,8 @@ const confirm = asyncHandler(async (req, res) => {
   const travelRequest = await TravelRequest.findById(req.params.id);
   if (!travelRequest) throw new ApiError(404, 'Travel request not found.');
 
-  const result = await confirmBooking(travelRequest, req.user);
+  const comment = req.body && (req.body.comment || req.body.reason);
+  const result = await confirmBooking(travelRequest, req.user, comment);
   if (!result.success) {
     return res.status(502).json({
       success: false,
@@ -28,7 +29,7 @@ const confirm = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: `Booking confirmed. PNR: ${result.pnr}, Reference: ${result.bookingReference}`,
+    message: `Booking confirmed. PNR: ${result.pnr}, Reference: ${result.bookingReference}${result.invoiceNumber ? `, Invoice: ${result.invoiceNumber}` : ''}`,
     booking: result.booking,
     travelRequest: result.travelRequest,
   });

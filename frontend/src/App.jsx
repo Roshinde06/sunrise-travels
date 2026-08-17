@@ -24,6 +24,7 @@ import ApprovalDetail from './pages/manager/ApprovalDetail';
 // Admin
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminBookings from './pages/admin/AdminBookings';
+import AdminBookingDetail from './pages/admin/AdminBookingDetail';
 import AdminTicketing from './pages/admin/AdminTicketing';
 import AdminEmployees from './pages/admin/AdminEmployees';
 import AdminPolicies from './pages/admin/AdminPolicies';
@@ -61,6 +62,7 @@ export default function App() {
         {/* Admin */}
         <Route path="/admin/dashboard" element={<RoleRoute roles={['admin']}><AdminDashboard /></RoleRoute>} />
         <Route path="/admin/bookings" element={<RoleRoute roles={['admin']}><AdminBookings /></RoleRoute>} />
+        <Route path="/admin/bookings/:id" element={<RoleRoute roles={['admin']}><AdminBookingDetail /></RoleRoute>} />
         <Route path="/admin/ticketing" element={<RoleRoute roles={['admin']}><AdminTicketing /></RoleRoute>} />
         <Route path="/admin/employees" element={<RoleRoute roles={['admin']}><AdminEmployees /></RoleRoute>} />
         <Route path="/admin/policies" element={<RoleRoute roles={['admin']}><AdminPolicies /></RoleRoute>} />

@@ -1,40 +1,63 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Clock, CheckCircle2, XCircle, Briefcase, Eye, Check, X, ClipboardCheck, ArrowRight } from 'lucide-react';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { inr, formatDate, formatDateTime, getErrorMessage } from '../../utils/format';
+import { inr, formatDate, formatDateTime, getErrorMessage, formatRoute, travelTypeLabel } from '../../utils/format';
 import StatusBadge from '../../components/StatusBadge';
 import StatCard from '../../components/StatCard';
+import RequestFilters from '../../components/RequestFilters';
+import DecisionModal from '../../components/DecisionModal';
+
+const STATUSES = ['ALL', 'PENDING', 'APPROVED', 'REJECTED', 'TICKETED', 'CANCELLED'];
+const EMPTY_FILTERS = { search: '', status: 'ALL', travelType: 'ALL', dateFrom: '', dateTo: '' };
 
 export default function ManagerDashboard() {
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
-  const [pending, setPending] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState('');
+  const [decision, setDecision] = useState(null); // { action, request }
 
-  const load = async () => {
+  const load = async (nextFilters = filters) => {
+    setLoading(true);
     try {
-      const [statsRes, pendingRes] = await Promise.all([client.get('/approvals/stats'), client.get('/approvals/pending')]);
+      const params = {};
+      if (nextFilters.search) params.search = nextFilters.search;
+      if (nextFilters.status && nextFilters.status !== 'ALL') params.status = nextFilters.status;
+      if (nextFilters.travelType && nextFilters.travelType !== 'ALL') params.travelType = nextFilters.travelType;
+      if (nextFilters.dateFrom) params.dateFrom = nextFilters.dateFrom;
+      if (nextFilters.dateTo) params.dateTo = nextFilters.dateTo;
+      const [statsRes, reqRes] = await Promise.all([
+        client.get('/approvals/stats'),
+        client.get('/travel-requests', { params }),
+      ]);
       setData(statsRes.data);
-      setPending(pendingRes.data.requests || []);
+      setRequests(reqRes.data.requests || []);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not load requests.'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
+    load(EMPTY_FILTERS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const decide = async (id, action, reason = '') => {
-    setActing(`${action}-${id}`);
+  const decide = async (comment) => {
+    const { action, request } = decision;
+    setActing(`${action}-${request._id}`);
     try {
-      await client.post(`/approvals/${id}/${action}`, reason ? { reason } : {});
+      await client.post(`/approvals/${request._id}/${action}`, comment ? { reason: comment } : {});
       toast.success(action === 'approve' ? 'Request approved.' : 'Request rejected.');
+      setDecision(null);
       load();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Action failed.'));
@@ -43,11 +66,11 @@ export default function ManagerDashboard() {
     }
   };
 
-  if (loading || !data) {
+  if (loading && !data) {
     return <div className="text-center py-5"><div className="spinner-border text-primary" /></div>;
   }
 
-  const s = data.stats;
+  const s = data?.stats;
 
   return (
     <div>
@@ -70,8 +93,8 @@ export default function ManagerDashboard() {
           </span>
           <div>
             <h2 className="fw-bold mb-1">Welcome, {user?.name?.split(' ')[0] || 'there'} 👋</h2>
-            <div className="opacity-75">Approver · Review pending travel requests</div>
-            {s.pendingApprovals > 0 && (
+            <div className="opacity-75">Approver · Review employee travel requests</div>
+            {s?.pendingApprovals > 0 && (
               <div className="small mt-2 opacity-90">
                 <span className="badge text-bg-warning text-dark">{s.pendingApprovals} request{s.pendingApprovals === 1 ? '' : 's'} waiting for your decision</span>
               </div>
@@ -90,24 +113,33 @@ export default function ManagerDashboard() {
 
       <div className="row g-3 mb-4">
         <div className="col-6 col-md-3">
-          <StatCard label="Pending Approvals" value={s.pendingApprovals} icon={<Clock size={20} />} accent="warning" />
+          <StatCard label="Pending Approvals" value={s?.pendingApprovals ?? 0} icon={<Clock size={20} />} accent="warning" />
         </div>
         <div className="col-6 col-md-3">
-          <StatCard label="Approved Today" value={s.approvedToday} icon={<CheckCircle2 size={20} />} accent="success" />
+          <StatCard label="Approved Today" value={s?.approvedToday ?? 0} icon={<CheckCircle2 size={20} />} accent="success" />
         </div>
         <div className="col-6 col-md-3">
-          <StatCard label="Rejected Today" value={s.rejectedToday} icon={<XCircle size={20} />} accent="danger" />
+          <StatCard label="Rejected Today" value={s?.rejectedToday ?? 0} icon={<XCircle size={20} />} accent="danger" />
         </div>
         <div className="col-6 col-md-3">
-          <StatCard label="Total Requests" value={s.totalRequests} icon={<Briefcase size={20} />} accent="primary" />
+          <StatCard label="Total Requests" value={s?.totalRequests ?? 0} icon={<Briefcase size={20} />} accent="primary" />
         </div>
       </div>
 
-      {/* Pending queue */}
+      {/* Search & filter */}
+      <RequestFilters
+        filters={filters}
+        onChange={(patch) => setFilters({ ...filters, ...patch })}
+        onApply={() => load(filters)}
+        onClear={() => { setFilters(EMPTY_FILTERS); load(EMPTY_FILTERS); }}
+        statusOptions={STATUSES}
+      />
+
+      {/* Requests table */}
       <div className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white d-flex justify-content-between align-items-center">
-          <h5 className="mb-0 fw-semibold">Pending Travel Requests</h5>
-          <Link to="/manager/approvals" className="btn btn-sm btn-outline-primary">View all</Link>
+          <h5 className="mb-0 fw-semibold">Travel Requests</h5>
+          <span className="text-muted small">{requests.length} request(s)</span>
         </div>
         <div className="table-responsive">
           <table className="table table-hover mb-0">
@@ -116,37 +148,44 @@ export default function ManagerDashboard() {
                 <th>Request ID</th>
                 <th>Employee</th>
                 <th>Destination</th>
+                <th>Type</th>
                 <th>Travel Date</th>
                 <th className="text-end">Amount</th>
-                <th>Policy</th>
+                <th>Status</th>
                 <th>Submitted</th>
                 <th className="text-end">Action</th>
               </tr>
             </thead>
             <tbody>
-              {pending.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-4 text-muted">No pending approvals. 🎉</td></tr>
+              {loading && <tr><td colSpan={9} className="text-center py-4 text-muted">Loading…</td></tr>}
+              {!loading && requests.length === 0 && (
+                <tr><td colSpan={9} className="text-center py-4 text-muted">No requests match the filters.</td></tr>
               )}
-              {pending.map((r) => (
-                <tr key={r._id}>
+              {requests.map((r) => (
+                <tr key={r._id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/manager/approval/${r._id}`)}>
                   <td className="fw-semibold">{r.requestId}</td>
                   <td>
                     {r.employeeName}
                     <div className="small text-muted">{r.employeeDesignation}</div>
                   </td>
-                  <td>{r.from} → {r.to}</td>
+                  <td>{formatRoute(r)}</td>
+                  <td><span className="badge text-bg-light border">{travelTypeLabel(r.travelType)}</span></td>
                   <td>{formatDate(r.travelDate)}</td>
                   <td className="text-end">{inr(r.totalAmount)}</td>
-                  <td><span className="badge text-bg-success">Passed</span></td>
+                  <td><StatusBadge status={r.status} /></td>
                   <td className="small text-muted">{formatDate(r.createdAt)}</td>
-                  <td className="text-end text-nowrap">
+                  <td className="text-end text-nowrap" onClick={(e) => e.stopPropagation()}>
                     <Link to={`/manager/approval/${r._id}`} className="btn btn-sm btn-outline-secondary"><Eye size={14} /></Link>{' '}
-                    <button className="btn btn-sm btn-success" disabled={!!acting} onClick={() => decide(r._id, 'approve')}>
-                      <Check size={14} /> Approve
-                    </button>{' '}
-                    <button className="btn btn-sm btn-outline-danger" disabled={!!acting} onClick={() => decide(r._id, 'reject', 'Not approved at this time.')}>
-                      <X size={14} /> Reject
-                    </button>
+                    {r.status === 'PENDING' && (
+                      <>
+                        <button className="btn btn-sm btn-success" disabled={!!acting} onClick={() => setDecision({ action: 'approve', request: r })}>
+                          <Check size={14} /> Approve
+                        </button>{' '}
+                        <button className="btn btn-sm btn-outline-danger" disabled={!!acting} onClick={() => setDecision({ action: 'reject', request: r })}>
+                          <X size={14} /> Reject
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -171,14 +210,14 @@ export default function ManagerDashboard() {
               </tr>
             </thead>
             <tbody>
-              {data.history.length === 0 && (
+              {!data?.history?.length && (
                 <tr><td colSpan={6} className="text-center py-4 text-muted">No approvals decided yet.</td></tr>
               )}
-              {data.history.map((h) => (
+              {(data?.history || []).map((h) => (
                 <tr key={h._id}>
                   <td className="fw-semibold">{h.travelRequestId?.requestId || '—'}</td>
                   <td>{h.travelRequestId?.employeeName || '—'}</td>
-                  <td>{h.travelRequestId ? `${h.travelRequestId.from} → ${h.travelRequestId.to}` : '—'}</td>
+                  <td>{h.travelRequestId ? formatRoute(h.travelRequestId) : '—'}</td>
                   <td>
                     {h.action === 'approve' ? (
                       <span className="badge text-bg-success">Approved</span>
@@ -194,6 +233,18 @@ export default function ManagerDashboard() {
           </table>
         </div>
       </div>
+
+      {/* Decision modal */}
+      <DecisionModal
+        show={!!decision}
+        action={decision?.action}
+        title={decision?.action === 'approve' ? `Approve ${decision?.request?.requestId}` : `Reject ${decision?.request?.requestId}`}
+        subtitle={decision?.request ? `${decision.request.employeeName} · ${formatRoute(decision.request)} · ${inr(decision.request.totalAmount)}` : ''}
+        commentRequired={decision?.action === 'reject'}
+        submitting={!!acting}
+        onClose={() => setDecision(null)}
+        onSubmit={decide}
+      />
     </div>
   );
 }

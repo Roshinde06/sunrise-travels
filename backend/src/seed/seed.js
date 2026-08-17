@@ -280,82 +280,135 @@ async function buildSampleData({ policies, users, flights, hotels }) {
   const vikram = users.find((u) => u.email === 'vikram.singh@travelcorp.com');
   const priya = users.find((u) => u.email === 'manager@travelcorp.com');
   const amit = users.find((u) => u.email === 'admin@travelcorp.com');
-  const managerPolicy = policies.find((p) => p.designationKey === 'manager');
 
   const spec = [
-    // [user, from, to, days, cls, hotelStars, hotelRoom, status, {extras}]
-    { user: rahul, from: 'Mumbai', to: 'Delhi', days: 3, cls: 'Economy', stars: 2, room: 'Standard', status: 'PENDING' },
-    { user: sita, from: 'Mumbai', to: 'Delhi', days: 4, cls: 'Business', stars: 4, room: 'Deluxe', status: 'PENDING' },
-    { user: deepak, from: 'Delhi', to: 'Bangalore', days: 6, cls: 'Premium Economy', stars: 3, room: 'Deluxe', status: 'PENDING' },
-    { user: rahul, from: 'Bangalore', to: 'Mumbai', days: 7, cls: 'Economy', stars: 2, room: 'Standard', status: 'APPROVED' },
-    { user: anjali, from: 'Mumbai', to: 'Pune', days: 2, cls: 'Premium Economy', stars: 3, room: 'Deluxe', status: 'APPROVED' },
-    { user: rahul, from: 'Mumbai', to: 'Pune', days: 1, cls: 'Economy', stars: 2, room: 'Standard', status: 'TICKETED', ticketedToday: true },
-    { user: anjali, from: 'Hyderabad', to: 'Bangalore', days: -4, cls: 'Economy', stars: 3, room: 'Standard', status: 'TICKETED' },
-    { user: vikram, from: 'Delhi', to: 'Mumbai', days: -12, cls: 'Business', stars: 5, room: 'Premium', status: 'TICKETED' },
-    { user: rahul, from: 'Delhi', to: 'Jaipur', days: 2, cls: 'Economy', stars: 2, room: 'Standard', status: 'REJECTED', reason: 'Travel dates are not approved for the requested business activity.' },
-    { user: rahul, from: 'Goa', to: 'Mumbai', days: -9, cls: 'Economy', stars: 2, room: 'Standard', status: 'CANCELLED', reason: 'Trip cancelled due to change in project schedule.' },
+    // { user, from, to, days, cls, stars, room, travelType, status, extras }
+    // flight only — PENDING
+    { user: rahul, from: 'Mumbai', to: 'Delhi', days: 3, cls: 'Economy', travelType: 'flight', status: 'PENDING', employeeComment: 'Client meeting at Delhi office. Need to arrive before 10 AM.' },
+    // flight + hotel — PENDING
+    { user: sita, from: 'Mumbai', to: 'Delhi', days: 4, cls: 'Business', stars: 4, room: 'Deluxe', status: 'PENDING', employeeComment: 'Quarterly sales review with the regional team.' },
+    { user: deepak, from: 'Delhi', to: 'Bangalore', days: 6, cls: 'Premium Economy', stars: 3, room: 'Deluxe', status: 'PENDING', employeeComment: 'Project kickoff with the Bangalore engineering team.' },
+    // hotel only — APPROVED
+    { user: anjali, from: '', to: 'Pune', days: 2, travelType: 'hotel', stars: 3, room: 'Deluxe', status: 'APPROVED', employeeComment: 'Training workshop in Pune; accommodation needed for two nights.' },
+    { user: rahul, from: 'Bangalore', to: 'Mumbai', days: 7, cls: 'Economy', stars: 2, room: 'Standard', status: 'APPROVED', employeeComment: 'On-site support for the Mumbai rollout.' },
+    { user: anjali, from: 'Mumbai', to: 'Pune', days: 2, cls: 'Premium Economy', stars: 3, room: 'Deluxe', status: 'APPROVED', employeeComment: 'Vendor meeting in Pune.' },
+    { user: rahul, from: 'Mumbai', to: 'Pune', days: 1, cls: 'Economy', stars: 2, room: 'Standard', status: 'TICKETED', ticketedToday: true, employeeComment: 'Audit support at the Pune plant.' },
+    { user: anjali, from: 'Hyderabad', to: 'Bangalore', days: -4, cls: 'Economy', stars: 3, room: 'Standard', status: 'TICKETED', employeeComment: 'Data centre review.' },
+    { user: vikram, from: 'Delhi', to: 'Mumbai', days: -12, cls: 'Business', stars: 5, room: 'Premium', status: 'TICKETED', employeeComment: 'Executive client meeting.' },
+    // flight only — TICKETED
+    { user: deepak, from: 'Mumbai', to: 'Goa', days: -6, cls: 'Premium Economy', travelType: 'flight', status: 'TICKETED', employeeComment: 'Site visit — same-day return.' },
+    { user: rahul, from: 'Delhi', to: 'Jaipur', days: 2, cls: 'Economy', stars: 2, room: 'Standard', status: 'REJECTED', reason: 'Travel dates are not approved for the requested business activity.', employeeComment: 'Conference attendance in Jaipur.' },
+    { user: rahul, from: 'Goa', to: 'Mumbai', days: -9, cls: 'Economy', stars: 2, room: 'Standard', status: 'CANCELLED', reason: 'Trip cancelled due to change in project schedule.', employeeComment: 'Workshop attendance.' },
   ];
 
   const created = [];
   let bookingSeq = 0;
+  let invoiceSeq = 0;
 
   for (const s of spec) {
-    const flight = findFlight(s.from, s.to, s.days, s.cls);
-    const hotel = findHotel(s.to, s.stars, s.room);
-    if (!flight || !hotel) {
-      console.warn(`  [skip] no flight/hotel for ${s.user.name} ${s.from}->${s.to}`);
+    const travelType = s.travelType || 'flight_hotel';
+    const hasFlight = travelType !== 'hotel';
+    const hasHotel = travelType !== 'flight';
+    const flight = hasFlight ? findFlight(s.from, s.to, s.days, s.cls) : null;
+    const hotel = hasHotel ? findHotel(s.to, s.stars, s.room) : null;
+    if (hasFlight && !flight) {
+      console.warn(`  [skip] no flight for ${s.user.name} ${s.from}->${s.to}`);
+      continue;
+    }
+    if (hasHotel && !hotel) {
+      console.warn(`  [skip] no hotel for ${s.user.name} ${s.to}`);
       continue;
     }
 
     const nights = 2;
     const passengers = 1;
     const rooms = 1;
-    const flightCost = flight.price * passengers;
-    const hotelCost = hotel.pricePerNight * nights * rooms;
+    const flightCost = flight ? flight.price * passengers : 0;
+    const hotelCost = hotel ? hotel.pricePerNight * nights * rooms : 0;
     const totalAmount = flightCost + hotelCost;
     const requestId = `TRV-${10000 + created.length + 1}`;
+    const employeeComment = s.employeeComment || 'Business travel as per approved plan.';
+    const comments = [
+      { userId: s.user._id, role: 'employee', comment: employeeComment, action: 'submitted', createdAt: dateOffset(s.days - 2) },
+    ];
+
+    const managerDecisionAt = dateOffset(s.days - 1);
+    if (s.status === 'REJECTED') {
+      comments.push({ userId: priya._id, role: 'manager', comment: s.reason, action: 'rejected', createdAt: managerDecisionAt });
+    }
+    if (s.status === 'APPROVED') {
+      comments.push({ userId: priya._id, role: 'manager', comment: 'Approved — travel is required for the business activity.', action: 'approved', createdAt: managerDecisionAt });
+    }
+    if (s.status === 'TICKETED') {
+      comments.push({ userId: amit._id, role: 'admin', comment: 'Booking approved and payment processed.', action: 'booked', createdAt: dateOffset(s.days) });
+    }
 
     const req = await TravelRequest.create({
       requestId,
+      travelType,
       employeeId: s.user._id,
       employeeName: s.user.name,
       employeeDesignation: s.user.designation,
-      flightId: flight._id,
-      hotelId: hotel._id,
-      from: s.from,
+      employeeDepartment: s.user.department,
+      employeeComment,
+      comments,
+      flightId: flight ? flight._id : null,
+      hotelId: hotel ? hotel._id : null,
+      from: flight ? s.from : '',
       to: s.to,
       travelDate: dateOffset(s.days),
       returnDate: dateOffset(s.days + nights),
       passengers,
       rooms,
       nights,
-      flightSnapshot: {
-        airline: flight.airline,
-        flightNumber: flight.flightNumber,
-        from: s.from,
-        fromCode: flight.fromCode,
-        to: s.to,
-        toCode: flight.toCode,
-        departureTime: flight.departureTime,
-        arrivalTime: flight.arrivalTime,
-        travelClass: flight.travelClass,
-        price: flight.price,
-      },
-      hotelSnapshot: {
-        name: hotel.name,
-        city: hotel.city,
-        starRating: hotel.starRating,
-        roomType: hotel.roomType,
-        pricePerNight: hotel.pricePerNight,
-      },
+      flightSnapshot: flight
+        ? {
+            airline: flight.airline,
+            flightNumber: flight.flightNumber,
+            from: s.from,
+            fromCode: flight.fromCode,
+            to: s.to,
+            toCode: flight.toCode,
+            departureTime: flight.departureTime,
+            arrivalTime: flight.arrivalTime,
+            travelClass: flight.travelClass,
+            price: flight.price,
+          }
+        : {},
+      hotelSnapshot: hotel
+        ? {
+            name: hotel.name,
+            city: hotel.city,
+            location: hotel.location,
+            starRating: hotel.starRating,
+            roomType: hotel.roomType,
+            pricePerNight: hotel.pricePerNight,
+          }
+        : {},
       flightCost,
       hotelCost,
       totalAmount,
       policyStatus: 'passed',
       policyMessage: 'Complies with company travel policy.',
-      policyDetails: { designation: s.user.designation },
+      policyDetails: { designation: s.user.designation, allowedFlightClasses: ['Economy'] },
       status: s.status,
-      ...(s.status === 'CANCELLED' ? { cancelledReason: s.reason, cancelledBy: amit.name } : {}),
+      ...(s.status === 'APPROVED'
+        ? {
+            managerDecision: 'approve',
+            managerComment: 'Approved — travel is required for the business activity.',
+            managerId: priya._id,
+            managerDecisionAt,
+          }
+        : {}),
+      ...(s.status === 'REJECTED'
+        ? {
+            managerDecision: 'reject',
+            managerComment: s.reason,
+            managerId: priya._id,
+            managerDecisionAt,
+          }
+        : {}),
+      ...(s.status === 'CANCELLED' ? { cancelledReason: s.reason, cancelledBy: amit.name, bookingStatus: 'cancelled', paymentStatus: 'refunded' } : {}),
     });
 
     if (s.status === 'REJECTED') {
@@ -365,7 +418,7 @@ async function buildSampleData({ policies, users, flights, hotels }) {
         approverName: priya.name,
         action: 'reject',
         reason: s.reason,
-        decidedAt: dateOffset(s.days === 2 ? -1 : -3),
+        decidedAt: managerDecisionAt,
       });
     }
 
@@ -375,42 +428,90 @@ async function buildSampleData({ policies, users, flights, hotels }) {
         approverId: priya._id,
         approverName: priya.name,
         action: 'approve',
-        reason: 'Approved',
-        decidedAt: new Date(),
+        reason: 'Approved — travel is required for the business activity.',
+        decidedAt: managerDecisionAt,
       });
     }
 
     if (s.status === 'TICKETED' || s.status === 'CANCELLED') {
       const ticketedAt = s.ticketedToday ? new Date() : dateOffset(s.days + 1);
       bookingSeq += 1;
+      invoiceSeq += 1;
       const booking = await Booking.create({
         travelRequestId: req._id,
         employeeId: s.user._id,
         pnr: generatePnr(),
         bookingReference: `BK-${10000 + bookingSeq}`,
-        airline: flight.airline,
-        flightNumber: flight.flightNumber,
-        flightFrom: s.from,
-        flightTo: s.to,
-        flightDate: dateOffset(s.days),
-        flightDepartureTime: flight.departureTime,
-        flightArrivalTime: flight.arrivalTime,
-        travelClass: flight.travelClass,
-        hotelName: hotel.name,
-        hotelCity: hotel.city,
-        hotelStarRating: hotel.starRating,
-        hotelRoomType: hotel.roomType,
+        airline: flight ? flight.airline : '',
+        flightNumber: flight ? flight.flightNumber : '',
+        flightFrom: flight ? s.from : '',
+        flightTo: flight ? s.to : '',
+        flightDate: flight ? dateOffset(s.days) : null,
+        flightDepartureTime: flight ? flight.departureTime : '',
+        flightArrivalTime: flight ? flight.arrivalTime : '',
+        travelClass: flight ? flight.travelClass : '',
+        seat: `${5 + (bookingSeq % 30)}${['A', 'C', 'D', 'F'][bookingSeq % 4]}`,
+        hotelName: hotel ? hotel.name : '',
+        hotelCity: hotel ? hotel.city : '',
+        hotelStarRating: hotel ? hotel.starRating : 0,
+        hotelRoomType: hotel ? hotel.roomType : '',
+        hotelCheckIn: hotel ? dateOffset(s.days) : null,
+        hotelCheckOut: hotel ? dateOffset(s.days + nights) : null,
+        flightCost,
+        hotelCost,
         totalAmount,
         status: s.status === 'CANCELLED' ? 'cancelled' : 'confirmed',
-        ticketedAt: s.status === 'CANCELLED' ? ticketedAt : ticketedAt,
+        ticketedAt,
         ...(s.status === 'CANCELLED' ? { cancelledAt: dateOffset(s.days + 2) } : {}),
       });
 
       if (s.status === 'TICKETED') {
-        flight.availableSeats -= passengers;
-        hotel.availableRooms -= rooms;
-        await flight.save();
-        await hotel.save();
+        const taxes = Math.round(totalAmount * 0.05);
+        req.bookingStatus = 'confirmed';
+        req.paymentStatus = 'paid';
+        req.adminDecision = 'approve';
+        req.adminComment = 'Booking approved and payment processed.';
+        req.adminId = amit._id;
+        req.adminDecisionAt = ticketedAt;
+        req.bookingDetails = { pnr: booking.pnr, bookingReference: booking.bookingReference, bookedAt: ticketedAt };
+        req.ticketDetails = {
+          pnr: booking.pnr,
+          bookingReference: booking.bookingReference,
+          ticketNumber: booking.pnr,
+          seat: booking.seat,
+          airline: booking.airline,
+          flightNumber: booking.flightNumber,
+          from: booking.flightFrom,
+          to: booking.flightTo,
+          travelDate: booking.flightDate,
+          departureTime: booking.flightDepartureTime,
+          arrivalTime: booking.flightArrivalTime,
+          travelClass: booking.travelClass,
+          fare: totalAmount,
+          issuedAt: ticketedAt,
+        };
+        req.invoiceDetails = {
+          invoiceNumber: `INV-${10000 + invoiceSeq}`,
+          invoiceDate: ticketedAt,
+          flightCharges: flightCost,
+          hotelCharges: hotelCost,
+          taxes,
+          serviceCharges: 0,
+          otherCharges: 0,
+          totalAmount: totalAmount + taxes,
+          paymentStatus: 'paid',
+          paymentDate: ticketedAt,
+          bookingStatus: 'confirmed',
+        };
+        await req.save();
+        if (flight) {
+          flight.availableSeats -= passengers;
+          await flight.save();
+        }
+        if (hotel) {
+          hotel.availableRooms -= rooms;
+          await hotel.save();
+        }
       }
     }
 
@@ -420,6 +521,7 @@ async function buildSampleData({ policies, users, flights, hotels }) {
   // Keep counters ahead of sample IDs so new requests/bookings never collide
   await Counter.updateOne({ _id: 'travelRequest' }, { $set: { seq: 10000 + created.length } }, { upsert: true });
   await Counter.updateOne({ _id: 'booking' }, { $set: { seq: 10000 + bookingSeq } }, { upsert: true });
+  await Counter.updateOne({ _id: 'invoice' }, { $set: { seq: 10000 + invoiceSeq } }, { upsert: true });
 
   return created;
 }

@@ -55,3 +55,42 @@ export const getErrorMessage = (err, fallback = 'Something went wrong.') => {
   }
   return err.message || fallback;
 };
+
+export const TRAVEL_TYPE_META = {
+  flight: { label: 'Flight', badge: 'text-bg-primary' },
+  hotel: { label: 'Hotel', badge: 'text-bg-info' },
+  flight_hotel: { label: 'Flight + Hotel', badge: 'text-bg-dark' },
+};
+
+export const travelTypeLabel = (t) => TRAVEL_TYPE_META[t]?.label || t || '—';
+
+export const travelTypeBadgeMeta = (t) => {
+  const meta = TRAVEL_TYPE_META[t] || { label: t || '—', badge: 'text-bg-secondary' };
+  return { label: meta.label, className: `badge ${meta.badge}` };
+};
+
+/** "Mumbai → Delhi" for flight types, "Delhi (Hotel)" for hotel-only requests. */
+export const formatRoute = (r) => {
+  if (!r) return '—';
+  if (r.travelType === 'hotel') return r.to || r.hotelSnapshot?.city || '—';
+  if (r.travelType === 'flight') return r.from ? `${r.from} → ${r.to}` : (r.to || '—');
+  return r.from ? `${r.from} → ${r.to}` : (r.to || '—');
+};
+
+export const bookingStatusBadge = (s) => {
+  const map = {
+    none: { label: '—', className: 'badge text-bg-secondary' },
+    confirmed: { label: 'Confirmed', className: 'badge text-bg-success' },
+    cancelled: { label: 'Cancelled', className: 'badge text-bg-dark' },
+  };
+  return map[s] || { label: s || '—', className: 'badge text-bg-secondary' };
+};
+
+export const paymentStatusBadge = (s) => {
+  const map = {
+    pending: { label: 'Payment Pending', className: 'badge text-bg-warning' },
+    paid: { label: 'Paid', className: 'badge text-bg-success' },
+    refunded: { label: 'Refunded', className: 'badge text-bg-secondary' },
+  };
+  return map[s] || { label: s || '—', className: 'badge text-bg-secondary' };
+};

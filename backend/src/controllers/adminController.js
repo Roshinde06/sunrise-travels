@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
 const bcrypt = require('bcryptjs');
@@ -7,6 +8,7 @@ const User = require('../models/User');
 const TravelPolicy = require('../models/TravelPolicy');
 const AuditLog = require('../models/AuditLog');
 const audit = require('../services/auditService');
+const { adminRejectRequest } = require('../services/approvalService');
 
 /** GET /api/admin/dashboard — the five required Project Sunrise metrics + extras. */
 const dashboard = asyncHandler(async (_req, res) => {
@@ -53,16 +55,36 @@ const dashboard = asyncHandler(async (_req, res) => {
 
 /** GET /api/admin/bookings — all travel requests with filters + pagination. */
 const bookings = asyncHandler(async (req, res) => {
-  const { status, search, page = 1, limit = 20 } = req.query;
+  const { status, search, travelType, dateFrom, dateTo, bookingStatus, paymentStatus, page = 1, limit = 20 } = req.query;
   const query = {};
   if (status && status !== 'ALL') query.status = status;
-  if (search) {
-    query.$or = [
-      { requestId: { $regex: search, $options: 'i' } },
-      { employeeName: { $regex: search, $options: 'i' } },
-      { from: { $regex: search, $options: 'i' } },
-      { to: { $regex: search, $options: 'i' } },
+  if (travelType && travelType !== 'ALL') query.travelType = travelType;
+  if (bookingStatus && bookingStatus !== 'ALL') query.bookingStatus = bookingStatus;
+  if (paymentStatus && paymentStatus !== 'ALL') query.paymentStatus = paymentStatus;
+
+  if (dateFrom || dateTo) {
+    query.travelDate = {};
+    if (dateFrom) query.travelDate.$gte = new Date(`${dateFrom}T00:00:00`);
+    if (dateTo) query.travelDate.$lte = new Date(`${dateTo}T23:59:59`);
+  }
+
+  if (search && String(search).trim()) {
+    const term = String(search).trim();
+    const or = [
+      { requestId: { $regex: term, $options: 'i' } },
+      { employeeName: { $regex: term, $options: 'i' } },
+      { from: { $regex: term, $options: 'i' } },
+      { to: { $regex: term, $options: 'i' } },
     ];
+    if (mongoose.isValidObjectId(term)) or.push({ employeeId: term });
+    const users = await User.find({ email: { $regex: term, $options: 'i' } }).select('_id');
+    if (users.length) or.push({ employeeId: { $in: users.map((u) => u._id) } });
+    // Match booking references / ticket numbers (PNRs)
+    const bookings = await Booking.find({
+      $or: [{ bookingReference: { $regex: term, $options: 'i' } }, { pnr: { $regex: term, $options: 'i' } }],
+    }).select('travelRequestId');
+    if (bookings.length) or.push({ _id: { $in: bookings.map((b) => b.travelRequestId) } });
+    query.$or = or;
   }
 
   const total = await TravelRequest.countDocuments(query);
@@ -72,6 +94,16 @@ const bookings = asyncHandler(async (req, res) => {
     .limit(Number(limit));
 
   res.json({ success: true, requests, total, page: Number(page), limit: Number(limit) });
+});
+
+/**
+ * POST /api/admin/requests/:id/reject — admin rejects an approved request.
+ * An admin comment is required. Business logic lives in approvalService.
+ */
+const rejectRequest = asyncHandler(async (req, res) => {
+  const comment = String((req.body && req.body.comment) || '').trim();
+  const travelRequest = await adminRejectRequest(req.user, req.params.id, comment);
+  res.json({ success: true, travelRequest });
 });
 
 /** GET /api/admin/travel-spend — spend breakdown by month, city, class. */
@@ -331,6 +363,7 @@ const deletePolicy = asyncHandler(async (req, res) => {
 module.exports = {
   dashboard,
   bookings,
+  rejectRequest,
   travelSpend,
   analytics,
   auditLogs,

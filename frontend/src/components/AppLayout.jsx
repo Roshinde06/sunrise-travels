@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import {
   Plane,
   Menu,
@@ -22,6 +22,7 @@ import FavoritesMenu from './FavoritesMenu';
 import AccountMenu from './AccountMenu';
 import AppFooter from './AppFooter';
 import Sidebar from './Sidebar';
+import TravelAssistant from './TravelAssistant';
 
 const NAV = {
   employee: [
@@ -50,6 +51,7 @@ export default function AppLayout() {
   const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const nav = NAV[user?.role] || [];
+  const location = useLocation();
 
   return (
     <div className="d-flex min-vh-100">
@@ -97,10 +99,16 @@ export default function AppLayout() {
         </nav>
 
         <main className="flex-grow-1 px-3 px-md-4 py-4">
-          <Outlet />
+          {/* Subtle fade-in on route change (150–250ms, no slow transitions) */}
+          <div key={location.pathname} className="page-fade">
+            <Outlet />
+          </div>
         </main>
 
         <AppFooter />
+
+        {/* Role-based Corporate Travel Assistant */}
+        <TravelAssistant />
       </div>
     </div>
   );

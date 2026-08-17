@@ -9,6 +9,8 @@ const approvalRoutes = require('./approvalRoutes');
 const ticketingRoutes = require('./ticketingRoutes');
 const adminRoutes = require('./adminRoutes');
 const notificationRoutes = require('./notificationRoutes');
+const invoiceRoutes = require('./invoiceRoutes');
+const assistantRoutes = require('./assistantRoutes');
 
 const router = express.Router();
 
@@ -24,5 +26,7 @@ router.use('/ticketing', ticketingRoutes);
 router.use('/', ticketingRoutes);
 router.use('/admin', adminRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/invoices', invoiceRoutes);
+router.use('/assistant', assistantRoutes);
 
 module.exports = router;

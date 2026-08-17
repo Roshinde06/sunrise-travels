@@ -1,18 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Ticket, Ban, Eye, Clock, CheckCircle2, XCircle, Plane, Hotel, ShieldCheck } from 'lucide-react';
+import { Ticket, Ban, Eye, Clock, CheckCircle2, XCircle, Plane, Hotel, ShieldCheck, FileText, Luggage } from 'lucide-react';
 import client from '../../api/client';
 import { useToast } from '../../context/ToastContext';
-import { inr, formatDate, time12 } from '../../utils/format';
+import { inr, formatDate, formatDateTime, time12, travelTypeLabel, formatRoute } from '../../utils/format';
 import StatusBadge from '../../components/StatusBadge';
 import PolicyResult from '../../components/PolicyResult';
+import InvoiceView from '../../components/InvoiceView';
+import EmptyState from '../../components/EmptyState';
 import { getErrorMessage } from '../../utils/format';
+
+const ROLE_LABEL = { employee: 'Employee', manager: 'Manager', admin: 'Admin' };
 
 export default function MyTrips() {
   const toast = useToast();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
+  const [invoice, setInvoice] = useState(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
@@ -32,6 +38,22 @@ export default function MyTrips() {
   }, []);
 
   const count = (status) => requests.filter((r) => r.status === status).length;
+
+  const openDetail = async (r) => {
+    setDetail(r);
+    setInvoice(null);
+    if (r.status === 'TICKETED') {
+      setInvoiceLoading(true);
+      try {
+        const res = await client.get(`/invoices/${r._id}`);
+        setInvoice(res.data.invoice);
+      } catch (err) {
+        toast.error(getErrorMessage(err, 'Invoice could not be loaded.'));
+      } finally {
+        setInvoiceLoading(false);
+      }
+    }
+  };
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -74,6 +96,7 @@ export default function MyTrips() {
               <tr>
                 <th>Request ID</th>
                 <th>Destination</th>
+                <th>Type</th>
                 <th>Travel Date</th>
                 <th className="text-end">Total</th>
                 <th>Policy</th>
@@ -83,12 +106,17 @@ export default function MyTrips() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={7} className="text-center py-4 text-muted">Loading…</td></tr>
+                <tr><td colSpan={8} className="text-center py-4 text-muted">Loading…</td></tr>
               )}
               {!loading && requests.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-4 text-muted">
-                    No trips yet. <Link to="/employee/flights" className="fw-semibold">Plan your first trip →</Link>
+                  <td colSpan={8} className="p-0">
+                    <EmptyState
+                      icon={<Luggage size={28} />}
+                      title="No travel requests"
+                      text="You don't have any travel requests yet. Plan your first business trip — it only takes a minute."
+                      action={<Link to="/employee/flights" className="btn btn-primary btn-sm btn-lift">Plan a Trip</Link>}
+                    />
                   </td>
                 </tr>
               )}
@@ -96,9 +124,13 @@ export default function MyTrips() {
                 <tr key={r._id}>
                   <td className="fw-semibold">{r.requestId}</td>
                   <td>
-                    {r.from} → {r.to}
-                    <div className="small text-muted">{r.flightSnapshot?.flightNumber} · {r.hotelSnapshot?.name}</div>
+                    {formatRoute(r)}
+                    <div className="small text-muted">
+                      {r.travelType !== 'hotel' && r.flightSnapshot?.flightNumber ? `${r.flightSnapshot.flightNumber} · ` : ''}
+                      {r.travelType !== 'flight' && r.hotelSnapshot?.name ? r.hotelSnapshot.name : ''}
+                    </div>
                   </td>
+                  <td><span className="badge text-bg-light border">{travelTypeLabel(r.travelType)}</span></td>
                   <td>{formatDate(r.travelDate)}</td>
                   <td className="text-end">{inr(r.totalAmount)}</td>
                   <td>
@@ -110,7 +142,7 @@ export default function MyTrips() {
                   </td>
                   <td><StatusBadge status={r.status} /></td>
                   <td className="text-end text-nowrap">
-                    <button className="btn btn-sm btn-outline-secondary" onClick={() => setDetail(r)}>
+                    <button className="btn btn-sm btn-outline-secondary" onClick={() => openDetail(r)}>
                       <Eye size={14} /> Details
                     </button>{' '}
                     {r.status === 'TICKETED' && (
@@ -141,36 +173,50 @@ export default function MyTrips() {
             </div>
             {detail && (
               <div className="modal-body">
-                <div className="d-flex gap-2 mb-3">
+                <div className="d-flex gap-2 mb-3 flex-wrap">
+                  <span className="badge text-bg-light border">{travelTypeLabel(detail.travelType)}</span>
                   <StatusBadge status={detail.status} />
                   {detail.policyStatus === 'passed' && <span className="badge text-bg-success">Policy Passed</span>}
                 </div>
 
-                <div className="card mb-3">
-                  <div className="card-body d-flex align-items-center gap-3">
-                    <Plane className="text-primary flex-shrink-0" size={20} />
-                    <div className="flex-grow-1">
-                      <div className="fw-semibold">{detail.flightSnapshot?.airline} {detail.flightSnapshot?.flightNumber} · {detail.flightSnapshot?.travelClass}</div>
-                      <div className="small text-muted">
-                        {detail.from} → {detail.to} · {formatDate(detail.travelDate)} · {time12(detail.flightSnapshot?.departureTime)} – {time12(detail.flightSnapshot?.arrivalTime)}
+                {detail.travelType !== 'hotel' && (
+                  <div className="card mb-3">
+                    <div className="card-body d-flex align-items-center gap-3">
+                      <Plane className="text-primary flex-shrink-0" size={20} />
+                      <div className="flex-grow-1">
+                        <div className="fw-semibold">{detail.flightSnapshot?.airline} {detail.flightSnapshot?.flightNumber} · {detail.flightSnapshot?.travelClass}</div>
+                        <div className="small text-muted">
+                          {detail.flightSnapshot?.from || detail.from} → {detail.flightSnapshot?.to || detail.to} · {formatDate(detail.travelDate)} · {time12(detail.flightSnapshot?.departureTime)} – {time12(detail.flightSnapshot?.arrivalTime)}
+                        </div>
                       </div>
+                      <div className="fw-semibold">{inr(detail.flightCost)}</div>
                     </div>
-                    <div className="fw-semibold">{inr(detail.flightCost)}</div>
                   </div>
-                </div>
+                )}
 
-                <div className="card mb-3">
-                  <div className="card-body d-flex align-items-center gap-3">
-                    <Hotel className="text-primary flex-shrink-0" size={20} />
-                    <div className="flex-grow-1">
-                      <div className="fw-semibold">{detail.hotelSnapshot?.name}</div>
-                      <div className="small text-muted">
-                        {detail.hotelSnapshot?.city} · {'★'.repeat(detail.hotelSnapshot?.starRating || 0)} · {detail.hotelSnapshot?.roomType} · {detail.nights} night(s)
+                {detail.travelType !== 'flight' && (
+                  <div className="card mb-3">
+                    <div className="card-body d-flex align-items-center gap-3">
+                      <Hotel className="text-primary flex-shrink-0" size={20} />
+                      <div className="flex-grow-1">
+                        <div className="fw-semibold">{detail.hotelSnapshot?.name}</div>
+                        <div className="small text-muted">
+                          {detail.hotelSnapshot?.city} · {'★'.repeat(detail.hotelSnapshot?.starRating || 0)} · {detail.hotelSnapshot?.roomType} · {detail.nights} night(s)
+                          <div>{formatDate(detail.travelDate)} → {formatDate(detail.returnDate)}</div>
+                        </div>
                       </div>
+                      <div className="fw-semibold">{inr(detail.hotelCost)}</div>
                     </div>
-                    <div className="fw-semibold">{inr(detail.hotelCost)}</div>
                   </div>
-                </div>
+                )}
+
+                {/* Employee comment */}
+                {detail.employeeComment && (
+                  <div className="card mb-3">
+                    <div className="card-header bg-white fw-semibold small">My Comment / Business Purpose</div>
+                    <div className="card-body small">{detail.employeeComment}</div>
+                  </div>
+                )}
 
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <span className="fw-semibold">Total Amount</span>
@@ -188,22 +234,71 @@ export default function MyTrips() {
                   </div>
                 )}
 
+                {/* Comment history */}
+                <div className="card mb-3">
+                  <div className="card-header bg-white fw-semibold small">Comments & Approval History</div>
+                  <div className="card-body">
+                    {(!detail.comments || detail.comments.length === 0) && <div className="text-muted small">No comments yet.</div>}
+                    {(detail.comments || []).map((c, i) => (
+                      <div key={i} className="d-flex gap-3 mb-3">
+                        <span
+                          className={`rounded-circle d-inline-flex align-items-center justify-content-center text-white flex-shrink-0 fw-semibold ${
+                            c.role === 'employee' ? 'bg-primary' : c.role === 'manager' ? 'bg-success' : 'bg-dark'
+                          }`}
+                          style={{ width: 34, height: 34, fontSize: '0.75rem' }}
+                        >
+                          {(ROLE_LABEL[c.role] || c.role || '?').slice(0, 1).toUpperCase()}
+                        </span>
+                        <div className="flex-grow-1">
+                          <div className="d-flex flex-wrap justify-content-between gap-2">
+                            <div className="fw-semibold small">{ROLE_LABEL[c.role] || c.role}</div>
+                            <div className="small text-muted">{formatDateTime(c.createdAt)}</div>
+                          </div>
+                          {c.action && (
+                            <span className={`badge ${c.action === 'approved' || c.action === 'booked' || c.action === 'submitted' ? 'text-bg-success' : 'text-bg-danger'}`}>{c.action}</span>
+                          )}
+                          <div className="small mt-1">{c.comment}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {detail.status === 'REJECTED' && (
-                  <div className="alert alert-danger mb-0">
+                  <div className="alert alert-danger mb-3">
                     <div className="fw-semibold d-flex align-items-center gap-2"><XCircle size={16} /> Travel Request Rejected</div>
                     <div className="small mt-1">
-                      This request was rejected by the approver. Please contact your manager for details or submit a new compliant request.
+                      {detail.managerComment && <div><strong>Manager:</strong> {detail.managerComment}</div>}
+                      {detail.adminComment && <div><strong>Travel Administrator:</strong> {detail.adminComment}</div>}
+                      {!detail.managerComment && !detail.adminComment && 'This request was rejected. Please contact your manager for details or submit a new request.'}
                     </div>
                   </div>
                 )}
                 {detail.status === 'APPROVED' && (
-                  <div className="alert alert-primary mb-0 d-flex align-items-center gap-2">
+                  <div className="alert alert-primary mb-3 d-flex align-items-center gap-2">
                     <CheckCircle2 size={16} /> Approved — waiting for final ticket booking by the Travel Administrator.
                   </div>
                 )}
                 {detail.status === 'PENDING' && (
-                  <div className="alert alert-warning mb-0 d-flex align-items-center gap-2">
+                  <div className="alert alert-warning mb-3 d-flex align-items-center gap-2">
                     <Clock size={16} /> Waiting for Manager Approval.
+                  </div>
+                )}
+
+                {/* Invoice */}
+                {detail.status === 'TICKETED' && (
+                  <div className="mb-3">
+                    {invoiceLoading ? (
+                      <div className="text-center py-3 text-muted"><span className="spinner-border spinner-border-sm" /> Loading invoice…</div>
+                    ) : invoice ? (
+                      <div>
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                          <FileText size={16} className="text-primary" />
+                          <span className="fw-semibold small">Invoice {invoice.invoiceNumber}</span>
+                        </div>
+                        <InvoiceView invoice={invoice} />
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

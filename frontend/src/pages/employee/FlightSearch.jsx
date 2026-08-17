@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plane, Clock, AlertTriangle } from 'lucide-react';
+import { Search, Plane } from 'lucide-react';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { useTrip } from '../../context/TripContext';
 import { useToast } from '../../context/ToastContext';
-import FavoriteButton from '../../components/FavoriteButton';
-import { inr, formatDate, time12, durationLabel, getErrorMessage } from '../../utils/format';
+import FlightCard from '../../components/FlightCard';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+import EmptyState from '../../components/EmptyState';
+import ErrorState from '../../components/ErrorState';
+import { formatDate, getErrorMessage } from '../../utils/format';
 
 const CITIES = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Kolkata', 'Pune', 'Goa', 'Jaipur', 'Ahmedabad'];
 
@@ -16,83 +19,11 @@ const dateInput = (offset) => {
   return d.toISOString().slice(0, 10);
 };
 
-function FlightCard({ flight, selected, policy, onSelect }) {
-  const classAllowed = policy && policy.allowedFlightClasses.includes(flight.travelClass);
-  const underBudget = policy && flight.price <= policy.flightBudget;
-  const airlineCode = String(flight.flightNumber || '').split(' ')[0];
-
-  return (
-    <div className={`card mb-2 border ${selected ? 'border-primary border-2' : ''}`}>
-      <div className="card-body py-3">
-        <div className="d-flex flex-wrap align-items-center gap-3">
-          <div className="d-flex align-items-center gap-2" style={{ minWidth: 160 }}>
-            <div
-              className="media-thumb text-white"
-              style={{
-                width: 52,
-                height: 42,
-                background: 'linear-gradient(135deg, #134e4a, #0f9488)',
-                borderRadius: '0.5rem',
-              }}
-              title={flight.airline}
-            >
-              <span className="fw-bold" style={{ fontSize: '0.95rem', letterSpacing: '0.02em' }}>{airlineCode}</span>
-            </div>
-            <div>
-              <div className="fw-semibold">{flight.airline}</div>
-              <div className="small text-muted">{flight.flightNumber}</div>
-            </div>
-          </div>
-
-          <div className="d-flex align-items-center gap-3 flex-grow-1">
-            <div>
-              <div className="fw-bold">{flight.fromCode}</div>
-              <div className="small text-muted">{time12(flight.departureTime)}</div>
-            </div>
-            <div className="text-center text-muted small flex-grow-1">
-              <div>{durationLabel(flight.durationMinutes)}</div>
-              <div className="border-top mx-2" />
-              <div>{flight.stops === 0 ? 'Non-stop' : `${flight.stops} stop`}</div>
-            </div>
-            <div className="text-end">
-              <div className="fw-bold">{flight.toCode}</div>
-              <div className="small text-muted">{time12(flight.arrivalTime)}</div>
-            </div>
-          </div>
-
-          <div className="text-center" style={{ minWidth: 120 }}>
-            <span className="badge text-bg-light border">{flight.travelClass}</span>
-            <div className="fw-bold text-primary">{inr(flight.price)}</div>
-            <div className="small text-muted">{flight.availableSeats} seats</div>
-          </div>
-
-          <div style={{ minWidth: 110 }} className="text-end">
-            {policy && !classAllowed && (
-              <div className="small text-danger d-flex align-items-center gap-1 mb-1">
-                <AlertTriangle size={13} /> Not allowed for your designation
-              </div>
-            )}
-            {policy && classAllowed && !underBudget && (
-              <div className="small text-warning mb-1">Exceeds flight budget</div>
-            )}
-            <div className="d-flex align-items-center justify-content-end gap-1">
-              <FavoriteButton
-                type="flight"
-                id={flight._id}
-                title={`${flight.airline} ${flight.flightNumber} · ${flight.travelClass}`}
-                subtitle={`${flight.from} → ${flight.to} · ${formatDate(flight.departureDate)}`}
-                price={flight.price}
-              />
-              <button className="btn btn-sm btn-primary" onClick={() => onSelect(flight)}>
-                Select
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+const TRAVEL_TYPES = [
+  { value: 'flight', label: 'Flight only' },
+  { value: 'hotel', label: 'Hotel only' },
+  { value: 'flight_hotel', label: 'Flight + Hotel' },
+];
 
 export default function FlightSearch() {
   const { policy } = useAuth();
@@ -100,6 +31,7 @@ export default function FlightSearch() {
   const toast = useToast();
   const navigate = useNavigate();
 
+  const [travelType, setTravelType] = useState(trip?.travelType || 'flight_hotel');
   const [form, setForm] = useState({
     from: trip?.from || 'Mumbai',
     to: trip?.to || 'Delhi',
@@ -110,11 +42,28 @@ export default function FlightSearch() {
   });
   const [results, setResults] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleTravelTypeChange = (value) => {
+    setTravelType(value);
+    updateTrip({ travelType: value, ...(value === 'flight' ? { hotel: null } : {}) });
+    if (value === 'hotel') {
+      toast.info('Hotel-only request — search for a hotel.');
+      navigate('/employee/hotels');
+    }
+  };
+
+  // A hotel-only request has no flight — send the employee straight to hotel search.
+  useEffect(() => {
+    if (trip?.travelType === 'hotel') navigate('/employee/hotels');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const search = async (e) => {
     if (e) e.preventDefault();
     setSearching(true);
     setResults(null);
+    setError(null);
     try {
       const params = {
         from: form.from,
@@ -127,7 +76,9 @@ export default function FlightSearch() {
       const res = await client.get('/flights/search', { params });
       setResults(res.data);
     } catch (err) {
-      toast.error(getErrorMessage(err, 'Flight search failed.'));
+      const msg = getErrorMessage(err, 'Flight search failed.');
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSearching(false);
     }
@@ -140,6 +91,7 @@ export default function FlightSearch() {
 
   const handleSelect = (flight) => {
     updateTrip({
+      travelType,
       flight,
       from: flight.from,
       to: flight.to,
@@ -148,13 +100,47 @@ export default function FlightSearch() {
       passengers: Number(form.passengers),
       travelClass: flight.travelClass,
     });
-    toast.success(`Flight selected — ${flight.from} → ${flight.to}. Now pick a hotel.`);
-    navigate(`/employee/hotels?city=${encodeURIComponent(flight.to)}`);
+    if (travelType === 'flight') {
+      toast.success(`Flight selected — ${flight.from} → ${flight.to}. Review and submit your request.`);
+      navigate('/employee/travel-request');
+    } else {
+      toast.success(`Flight selected — ${flight.from} → ${flight.to}. Now pick a hotel.`);
+      navigate(`/employee/hotels?city=${encodeURIComponent(flight.to)}`);
+    }
   };
 
   return (
     <div>
       <h4 className="fw-bold mb-3">Search Flights</h4>
+
+      {/* Travel requirement */}
+      <div className="card border-0 shadow-sm mb-4">
+        <div className="card-body py-3">
+          <label className="form-label fw-semibold mb-2">Travel Requirement</label>
+          <div className="d-flex flex-wrap gap-4">
+            {TRAVEL_TYPES.map((t) => (
+              <div key={t.value} className="form-check">
+                <input
+                  className="form-check-input"
+                  type="radio"
+                  name="travelType"
+                  id={`travelType-${t.value}`}
+                  value={t.value}
+                  checked={travelType === t.value}
+                  onChange={(e) => handleTravelTypeChange(e.target.value)}
+                />
+                <label className="form-check-label" htmlFor={`travelType-${t.value}`}>{t.label}</label>
+              </div>
+            ))}
+            {travelType === 'flight' && (
+              <span className="small text-muted align-self-center">You can submit this request without selecting a hotel.</span>
+            )}
+            {travelType === 'flight_hotel' && (
+              <span className="small text-muted align-self-center">You will select a hotel after the flight.</span>
+            )}
+          </div>
+        </div>
+      </div>
 
       <form onSubmit={search} className="card border-0 shadow-sm mb-4">
         <div className="card-body">
@@ -201,12 +187,27 @@ export default function FlightSearch() {
         </div>
       </form>
 
-      {searching && <div className="text-center py-5 text-muted">Searching flights…</div>}
+      {searching && (
+        <div className="anim-fade-in">
+          <div className="fw-semibold text-muted mb-2 d-flex align-items-center gap-2">
+            <Plane size={16} /> Searching flights…
+          </div>
+          <LoadingSkeleton variant="flight" count={3} />
+        </div>
+      )}
 
-      {results && !searching && (
+      {error && !searching && (
+        <ErrorState title="Unable to load flights" message={error} onRetry={search} />
+      )}
+
+      {results && !searching && !error && (
         <div>
           {results.outbound.length === 0 ? (
-            <div className="alert alert-warning">No flights found for {results.query.from} → {results.query.to} on {formatDate(results.query.departureDate)}. Try different dates or cities.</div>
+            <EmptyState
+              icon={<Plane size={28} />}
+              title={`No flights found`}
+              text={`No flights from ${results.query.from} to ${results.query.to} on ${formatDate(results.query.departureDate)}. Try different dates or cities.`}
+            />
           ) : (
             <>
               <div className="fw-semibold mb-2">

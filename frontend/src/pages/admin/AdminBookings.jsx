@@ -1,75 +1,60 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Ticket } from 'lucide-react';
+import { Ticket, FileText } from 'lucide-react';
 import client from '../../api/client';
-import { inr, formatDate, formatDateTime } from '../../utils/format';
+import { useToast } from '../../context/ToastContext';
+import { inr, formatDate, getErrorMessage, formatRoute, travelTypeLabel, bookingStatusBadge, paymentStatusBadge } from '../../utils/format';
 import StatusBadge from '../../components/StatusBadge';
+import RequestFilters from '../../components/RequestFilters';
 
 const STATUSES = ['ALL', 'PENDING', 'APPROVED', 'READY_FOR_TICKETING', 'TICKETED', 'REJECTED', 'CANCELLED'];
+const EMPTY_FILTERS = { search: '', status: 'ALL', travelType: 'ALL', bookingStatus: 'ALL', paymentStatus: 'ALL', dateFrom: '', dateTo: '' };
 
 export default function AdminBookings() {
+  const toast = useToast();
   const [requests, setRequests] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ status: 'ALL', search: '' });
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
 
-  const load = async (status, search) => {
+  const load = async (nextFilters = filters) => {
     setLoading(true);
     try {
-      const res = await client.get('/admin/bookings', {
-        params: { status, search: search || undefined, limit: 50 },
-      });
+      const params = { limit: 50 };
+      if (nextFilters.search) params.search = nextFilters.search;
+      if (nextFilters.status && nextFilters.status !== 'ALL') params.status = nextFilters.status;
+      if (nextFilters.travelType && nextFilters.travelType !== 'ALL') params.travelType = nextFilters.travelType;
+      if (nextFilters.bookingStatus && nextFilters.bookingStatus !== 'ALL') params.bookingStatus = nextFilters.bookingStatus;
+      if (nextFilters.paymentStatus && nextFilters.paymentStatus !== 'ALL') params.paymentStatus = nextFilters.paymentStatus;
+      if (nextFilters.dateFrom) params.dateFrom = nextFilters.dateFrom;
+      if (nextFilters.dateTo) params.dateTo = nextFilters.dateTo;
+      const res = await client.get('/admin/bookings', { params });
       setRequests(res.data.requests || []);
       setTotal(res.data.total || 0);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not load bookings.'));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    load('ALL', '');
+    load(EMPTY_FILTERS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div>
       <h4 className="fw-bold mb-3">All Bookings & Requests</h4>
 
-      <div className="card border-0 shadow-sm mb-3">
-        <div className="card-body">
-          <div className="row g-2">
-            <div className="col-md-4">
-              <select
-                className="form-select"
-                value={filters.status}
-                onChange={(e) => {
-                  const status = e.target.value;
-                  setFilters({ ...filters, status });
-                  load(status, filters.search);
-                }}
-              >
-                {STATUSES.map((s) => <option key={s} value={s}>{s === 'ALL' ? 'All statuses' : s.replace(/_/g, ' ')}</option>)}
-              </select>
-            </div>
-            <div className="col-md-6">
-              <div className="input-group">
-                <span className="input-group-text"><Search size={15} /></span>
-                <input
-                  className="form-control"
-                  placeholder="Search by request ID, employee, or city…"
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') load(filters.status, filters.search);
-                  }}
-                />
-              </div>
-            </div>
-            <div className="col-md-2">
-              <button className="btn btn-primary w-100" onClick={() => load(filters.status, filters.search)}>Search</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <RequestFilters
+        filters={filters}
+        onChange={(patch) => setFilters({ ...filters, ...patch })}
+        onApply={() => load(filters)}
+        onClear={() => { setFilters(EMPTY_FILTERS); load(EMPTY_FILTERS); }}
+        statusOptions={STATUSES}
+        showBookingPayment
+      />
 
       <div className="text-muted small mb-2">{total} request(s)</div>
 
@@ -80,19 +65,21 @@ export default function AdminBookings() {
               <tr>
                 <th>Request ID</th>
                 <th>Employee</th>
-                <th>Route</th>
+                <th>Destination</th>
+                <th>Type</th>
                 <th>Travel Date</th>
                 <th className="text-end">Total</th>
                 <th>Policy</th>
+                <th>Booking</th>
+                <th>Payment</th>
                 <th>Status</th>
-                <th>Submitted</th>
                 <th className="text-end">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={9} className="text-center py-4 text-muted">Loading…</td></tr>}
+              {loading && <tr><td colSpan={11} className="text-center py-4 text-muted">Loading…</td></tr>}
               {!loading && requests.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-4 text-muted">No requests match the filters.</td></tr>
+                <tr><td colSpan={11} className="text-center py-4 text-muted">No requests match the filters.</td></tr>
               )}
               {requests.map((r) => (
                 <tr key={r._id}>
@@ -101,13 +88,22 @@ export default function AdminBookings() {
                     {r.employeeName}
                     <div className="small text-muted">{r.employeeDesignation}</div>
                   </td>
-                  <td>{r.from} → {r.to}</td>
+                  <td>{formatRoute(r)}</td>
+                  <td><span className="badge text-bg-light border">{travelTypeLabel(r.travelType)}</span></td>
                   <td>{formatDate(r.travelDate)}</td>
                   <td className="text-end">{inr(r.totalAmount)}</td>
                   <td>{r.policyStatus === 'passed' ? <span className="badge text-bg-success">Passed</span> : <span className="badge text-bg-secondary">{r.policyStatus}</span>}</td>
+                  <td>
+                    <span className={bookingStatusBadge(r.bookingStatus).className}>{bookingStatusBadge(r.bookingStatus).label}</span>
+                  </td>
+                  <td>
+                    <span className={paymentStatusBadge(r.paymentStatus).className}>{paymentStatusBadge(r.paymentStatus).label}</span>
+                  </td>
                   <td><StatusBadge status={r.status} /></td>
-                  <td className="small text-muted">{formatDateTime(r.createdAt)}</td>
                   <td className="text-end text-nowrap">
+                    <Link to={`/admin/bookings/${r._id}`} className="btn btn-sm btn-outline-secondary">
+                      <FileText size={14} /> Details
+                    </Link>{' '}
                     {r.status === 'TICKETED' && (
                       <Link to={`/employee/ticket/${r._id}`} className="btn btn-sm btn-primary"><Ticket size={14} /> Ticket</Link>
                     )}
@@ -118,6 +114,8 @@ export default function AdminBookings() {
           </table>
         </div>
       </div>
+
+      <div className="small text-muted mt-2">{requests.length < total ? `Showing first ${requests.length} of ${total} — refine your filters for more specific results.` : ''}</div>
     </div>
   );
 }

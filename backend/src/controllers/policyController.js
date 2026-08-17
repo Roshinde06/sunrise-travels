@@ -9,25 +9,33 @@ const audit = require('../services/auditService');
 
 /**
  * POST /api/policy/validate
- * Body: { flightId, hotelId, passengers, rooms, travelDate, returnDate }
+ * Body: { travelType, flightId, hotelId, passengers, rooms, travelDate, returnDate, checkIn, checkOut }
  * Runs the Corporate Policy Engine against the logged-in employee's policy band.
+ * flightId/hotelId are optional depending on travelType (flight only / hotel only / both).
  */
 const validate = asyncHandler(async (req, res) => {
-  const { flightId, hotelId, passengers = 1, rooms = 1, travelDate, returnDate } = req.body;
+  const { travelType = 'flight_hotel', flightId, hotelId, passengers = 1, rooms = 1, travelDate, returnDate, checkIn, checkOut } = req.body;
 
-  if (!flightId || !hotelId) throw new ApiError(400, 'flightId and hotelId are required.');
+  const needsFlight = travelType !== 'hotel';
+  const needsHotel = travelType !== 'flight';
+  if (needsFlight && !flightId) throw new ApiError(400, 'flightId is required for this travel type.');
+  if (needsHotel && !hotelId) throw new ApiError(400, 'hotelId is required for this travel type.');
+
+  // Hotel-only requests carry their dates as checkIn/checkOut; map to travelDate/returnDate.
+  const startDate = travelType === 'hotel' ? checkIn : travelDate;
+  const endDate = travelType === 'hotel' ? checkOut : returnDate;
 
   const [flight, hotel, policy] = await Promise.all([
-    Flight.findById(flightId),
-    Hotel.findById(hotelId),
+    needsFlight ? Flight.findById(flightId) : Promise.resolve(null),
+    needsHotel ? Hotel.findById(hotelId) : Promise.resolve(null),
     getPolicyForUser(req.user),
   ]);
 
-  if (!flight) throw new ApiError(404, 'Selected flight is no longer available. Please search again.');
-  if (!hotel) throw new ApiError(404, 'Selected hotel is no longer available. Please select another hotel.');
+  if (needsFlight && !flight) throw new ApiError(404, 'Selected flight is no longer available. Please search again.');
+  if (needsHotel && !hotel) throw new ApiError(404, 'Selected hotel is no longer available. Please select another hotel.');
   if (!policy) throw new ApiError(409, 'No travel policy is configured for your designation. Please contact the administrator.');
 
-  const nights = computeNights(travelDate, returnDate);
+  const nights = computeNights(startDate, endDate);
   const result = validateTrip({
     policy,
     flight,
@@ -37,10 +45,12 @@ const validate = asyncHandler(async (req, res) => {
     nights,
   });
 
+  const numPassengers = Number(passengers) || 1;
+  const numRooms = Number(rooms) || 1;
   const costs = {
-    flightCost: flight.price * Number(passengers),
-    hotelCost: hotel.pricePerNight * nights * Number(rooms),
-    total: flight.price * Number(passengers) + hotel.pricePerNight * nights * Number(rooms),
+    flightCost: flight ? flight.price * numPassengers : 0,
+    hotelCost: hotel ? hotel.pricePerNight * nights * numRooms : 0,
+    total: (flight ? flight.price * numPassengers : 0) + (hotel ? hotel.pricePerNight * nights * numRooms : 0),
     nights,
   };
 
@@ -49,7 +59,7 @@ const validate = asyncHandler(async (req, res) => {
       user: req.user,
       action: 'POLICY_VALIDATION_FAILED',
       entity: 'TravelRequest',
-      details: { flightId, hotelId, reasons: result.reasons },
+      details: { flightId, hotelId, travelType, reasons: result.reasons },
     });
   }
 

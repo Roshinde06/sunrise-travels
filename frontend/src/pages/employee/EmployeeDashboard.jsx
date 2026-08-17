@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Plane, Hotel, Briefcase, Clock, CheckCircle2, Ticket, XCircle, Ban, ArrowRight } from 'lucide-react';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import { inr, formatDate } from '../../utils/format';
+import { inr, formatDate, formatRoute } from '../../utils/format';
 import StatusBadge from '../../components/StatusBadge';
 import StatCard from '../../components/StatCard';
 
@@ -129,7 +129,7 @@ export default function EmployeeDashboard() {
                 <tr key={r._id}>
                   <td className="fw-semibold">{r.requestId}</td>
                   <td>
-                    {r.from} → {r.to}
+                    {formatRoute(r)}
                     <div className="small text-muted">{r.flightSnapshot?.airline} {r.flightSnapshot?.flightNumber} · {r.flightSnapshot?.travelClass}</div>
                   </td>
                   <td>{formatDate(r.travelDate)}</td>

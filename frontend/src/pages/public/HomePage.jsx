@@ -1,5 +1,6 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { cityPosterUrl } from '../../utils/travelImages';
 import {
   Plane,
   ShieldCheck,
@@ -26,6 +27,21 @@ import AppFooter from '../../components/AppFooter';
 
 const HERO_IMAGE =
   'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?q=80&w=2000&auto=format&fit=crop';
+
+/** Image that falls back to a locally generated poster when the network/photo fails. */
+function PosterImage({ src, fallback, alt, className, style }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <img
+      src={failed || !src ? fallback : src}
+      alt={alt}
+      className={className}
+      style={style}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 const FEATURES = [
   { icon: <Briefcase size={22} />, title: 'Easy Travel Booking', text: 'Employees can submit business travel requirements easily, with flights and hotels in one request.' },
@@ -105,7 +121,7 @@ export default function HomePage() {
       >
         <div className="container py-5" style={{ paddingTop: '5.5rem', paddingBottom: '5.5rem' }}>
           <div className="row align-items-center g-4">
-            <div className="col-lg-7">
+            <div className="col-lg-7 anim-fade-in-up">
               <span className="badge rounded-pill px-3 py-2 mb-3 d-inline-flex align-items-center gap-2" style={{ background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.35)' }}>
                 <Plane size={14} /> Corporate Travel Booking Platform
               </span>
@@ -147,7 +163,7 @@ export default function HomePage() {
             </div>
 
             {/* Floating mini status card */}
-            <div className="col-lg-5 d-none d-lg-block">
+            <div className="col-lg-5 d-none d-lg-block anim-fade-in-up" style={{ animationDelay: '0.15s' }}>
               <div className="bg-white text-dark rounded-4 shadow-lg p-4 ms-auto" style={{ maxWidth: 380 }}>
                 <div className="small text-muted text-uppercase fw-semibold mb-3">Live booking status</div>
                 <div className="d-flex align-items-center justify-content-between border-bottom pb-3 mb-3">
@@ -202,9 +218,9 @@ export default function HomePage() {
           <p className="text-muted">Six capabilities that take business travel from request to confirmed ticket.</p>
         </div>
         <div className="row g-4">
-          {FEATURES.map((f) => (
-            <div className="col-md-6 col-lg-4" key={f.title}>
-              <div className="stat-card h-100 p-4 bg-white d-flex gap-3">
+          {FEATURES.map((f, i) => (
+            <div className="col-md-6 col-lg-4 anim-fade-in-up" key={f.title} style={{ animationDelay: `${i * 0.06}s` }}>
+              <div className="stat-card h-100 p-4 bg-white d-flex gap-3 card-hover">
                 <span
                   className="rounded-3 d-inline-flex align-items-center justify-content-center text-white flex-shrink-0"
                   style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #134e4a, #0f9488)' }}
@@ -320,12 +336,12 @@ export default function HomePage() {
         <div className="row g-4 align-items-center">
           <div className="col-lg-6">
             <div className="rounded-4 overflow-hidden shadow-sm">
-              <img
+              <PosterImage
                 src="https://images.unsplash.com/photo-1521737711867-e3b97375f902?q=80&w=1200&auto=format&fit=crop"
+                fallback={cityPosterUrl('TravelCorp', 'Corporate Travel')}
                 alt="TravelCorp team planning corporate travel"
                 className="w-100"
                 style={{ objectFit: 'cover', maxHeight: 380 }}
-                loading="lazy"
               />
             </div>
           </div>
@@ -395,8 +411,14 @@ export default function HomePage() {
             {DESTINATIONS.map((d) => (
               <div className="col-sm-6 col-lg-3" key={d.city}>
                 <Link to="/login" className="text-decoration-none">
-                  <div className="rounded-4 overflow-hidden shadow-sm position-relative" style={{ height: 220 }}>
-                    <img src={d.image} alt={d.city} className="w-100 h-100" style={{ objectFit: 'cover' }} loading="lazy" />
+                  <div className="rounded-4 overflow-hidden shadow-sm position-relative img-hover-zoom card-hover" style={{ height: 220 }}>
+                    <PosterImage
+                      src={d.image}
+                      fallback={cityPosterUrl(d.city, d.tag)}
+                      alt={`View of ${d.city}, a popular business destination`}
+                      className="w-100 h-100"
+                      style={{ objectFit: 'cover' }}
+                    />
                     <div className="position-absolute top-0 start-0 w-100 h-100" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(15,23,42,0.75))' }} />
                     <span className="position-absolute badge rounded-pill" style={{ top: 12, left: 12, background: 'rgba(255,255,255,0.85)', color: '#134e4a' }}>
                       <Building2 size={12} className="me-1" />{d.code}
