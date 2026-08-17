@@ -1,0 +1,162 @@
+/* Bootstrap first (components + reboot), then Tailwind utilities on top */
+@import 'bootstrap/dist/css/bootstrap.min.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sunrise-primary: #0f9488;
+  --sunrise-primary-hover: #0d7a70;
+  --sunrise-primary-active: #0b6b63;
+  --sunrise-dark: #134e4a;
+  --sunrise-light: #ccfbf1;
+
+  /* Retheme Bootstrap's primary across badges, alerts, links, progress, focus */
+  --bs-primary: #0f9488;
+  --bs-primary-rgb: 15, 148, 136;
+  --bs-primary-bg-subtle: #ccfbf1;
+  --bs-primary-border-subtle: #5eead4;
+  --bs-primary-text-emphasis: #115e59;
+  --bs-link-color: #0f9488;
+  --bs-link-color-rgb: 15, 148, 136;
+  --bs-link-hover-color: #0b6b63;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background-color: #f4f6fb;
+  color: #1f2937;
+}
+
+/* Buttons */
+.btn-primary {
+  --bs-btn-bg: var(--sunrise-primary);
+  --bs-btn-border-color: var(--sunrise-primary);
+  --bs-btn-hover-bg: var(--sunrise-primary-hover);
+  --bs-btn-hover-border-color: var(--sunrise-primary-hover);
+  --bs-btn-active-bg: var(--sunrise-primary-active);
+  --bs-btn-active-border-color: var(--sunrise-primary-active);
+  --bs-btn-disabled-bg: var(--sunrise-primary);
+  --bs-btn-disabled-border-color: var(--sunrise-primary);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--sunrise-primary);
+  --bs-btn-border-color: var(--sunrise-primary);
+  --bs-btn-hover-bg: var(--sunrise-primary);
+  --bs-btn-hover-border-color: var(--sunrise-primary);
+  --bs-btn-active-bg: var(--sunrise-primary);
+  --bs-btn-active-border-color: var(--sunrise-primary);
+}
+
+/* Form focus */
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+  border-color: #5eead4;
+  box-shadow: 0 0 0 0.25rem rgba(15, 148, 136, 0.22);
+}
+
+.bg-brand-gradient {
+  background: linear-gradient(135deg, #134e4a 0%, #0f9488 100%);
+}
+
+.stat-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+
+.table > :not(caption) > * > * {
+  vertical-align: middle;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+/* Simple CSS bar chart */
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 160px;
+}
+.bar-chart .bar {
+  background: linear-gradient(180deg, #0f9488, #115e59);
+  border-radius: 4px 4px 0 0;
+  min-width: 18px;
+  transition: height 0.3s ease;
+}
+
+.ticket {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.9rem;
+  box-shadow: 0 10px 30px rgba(19, 78, 74, 0.1);
+  overflow: hidden;
+}
+
+/* ── Sidebar (after-login layout) ────────────────────── */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 264px;
+  z-index: 1045;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+}
+.sidebar.open {
+  transform: translateX(0);
+}
+@media (min-width: 992px) {
+  .sidebar {
+    position: sticky;
+    transform: none;
+  }
+}
+.sidebar .nav-link {
+  color: rgba(255, 255, 255, 0.75);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.sidebar .nav-link:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.sidebar .border-bottom,
+.sidebar .border-top {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.sidebar .nav-link.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #0f9488, #115e59);
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(15, 148, 136, 0.35);
+}
+
+/* Travel imagery helpers */
+.media-thumb {
+  border-radius: 0.6rem;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e6f7f4, #ccfbf1);
+  flex-shrink: 0;
+}
+.media-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
